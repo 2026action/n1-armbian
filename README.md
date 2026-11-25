@@ -1,17 +1,17 @@
 # 斐讯 N1 (Phicomm N1 / s905d) 极简 Armbian 固件云端构建
 
 基于 GitHub Actions 的斐讯 N1（Amlogic S905D）极简 Armbian 固件云端编译项目。
-本地**不需要任何编译环境**，进入 Actions 页面点击按钮即可在 3~5 分钟内云端出包。
+本地**不需要任何编译环境**，进入 Actions 页面点击按钮即可云端自动出包。
 
 ---
 
 ## 固件特性
 
 - **极致纯净**：基于官方 Armbian Minimal 精简系统，剔除一切无用工具链与臃肿套件。
-- **WiFi / 蓝牙开箱即用**：完整包含斐讯 N1 的博通 BCM43455 无线网卡固件和 DTB 驱动支持。
+- **WiFi 开箱即用**：完整包含斐讯 N1 的博通 BCM43455 无线网卡固件和 DTB 驱动支持。
 - **开机即连**：内置 `NetworkManager`、`nmcli`、`nmtui` 与 `wpa_supplicant`。
-- **空间充裕**：系统分区仅占用约 2GB，为 N1 自带的 8GB eMMC 腾出 5GB+ 存储空间，方便部署 Docker 及常用轻量服务。
-- **ophub 稳定内核**：支持 6.12.y（默认）、6.6.y、6.1.y、5.15.y、5.10.y。
+- **空间充裕**：系统分区仅占用约 2GB，为 N1 自带的 8GB eMMC 腾出 5GB+ 存储空间，方便后续部署轻量服务。
+- **ophub 稳定内核**：支持 6.12.y、6.6.y、6.1.y、5.15.y、5.10.y。
 
 ---
 
@@ -20,10 +20,10 @@
 1. 点击仓库上方的 [Actions](https://github.com/2026action/n1-armbian/actions)。
 2. 在左侧选择 **`Build N1 Armbian (s905d)`**。
 3. 点击右侧的 **`Run workflow`** 下拉按钮：
-   - **kernel**：选择内核版本（推荐默认的 `6.12.y` 或 `6.1.y`）
+   - **kernel**：选择内核版本（如 `5.15.y`、`6.1.y`、`6.12.y` 等）
    - **root_mb**：根分区大小（MiB，默认 `2048`）
    - **upload_release**：是否同时发布到 GitHub Releases（默认 `true`）
-4. 点击绿色 **`Run workflow`** 开始编译。大约 3~5 分钟后，固件会自动发布在 [Releases](https://github.com/2026action/n1-armbian/releases) 中。
+4. 点击绿色 **`Run workflow`** 开始编译。由于需要下载上游底包、ophub 重新打包、chroot 定制并进行高压缩比 xz 压缩，全流程一般需要 **40~80 分钟**。构建完成后固件会自动发布在 [Releases](https://github.com/2026action/n1-armbian/releases) 中。
 
 ---
 
@@ -40,17 +40,21 @@
    - 默认密码：`1234`
 3. 首次登录会提示修改 root 密码并创建一个普通用户（可按 `Ctrl + C` 跳过创建普通用户）。
 
-### 3. 连接 WiFi
+### 3. 连接与验证 WiFi
 
-可以使用以下任意一种方式连接无线网络：
+- **WiFi 状态检查（验证固件驱动）**：
+  ```bash
+  dmesg | grep -i brcmfmac
+  ```
+  正常情况下不应出现 `firmware not found` 报错。
 
-- **方法 1：图形字符界面（推荐）**
+- **连接无线网络（图形终端，推荐）**：
   ```bash
   nmtui
   ```
   选择 **`Activate a connection`** -> 找到你的 WiFi 名称并回车 -> 输入无线密码即可连接。
 
-- **方法 2：命令行连接**
+- **连接无线网络（命令行）**：
   ```bash
   nmcli device wifi list
   nmcli device wifi connect "你的WiFi名称" password "你的WiFi密码"

@@ -20,11 +20,15 @@ echo "[*] apt-get update"
 apt-get update
 
 echo "[*] Installing essential network and WiFi packages"
-# Ensure wireless utilities and NetworkManager are fully installed
+# Ensure wireless utilities, BCM firmware, and NetworkManager are fully installed
 apt-get install -y --no-install-recommends \
   ca-certificates curl wget nano htop \
   iw wireless-tools wpasupplicant wireless-regdb rfkill \
   network-manager libnss-systemd
+
+# Explicitly ensure Broadcom WiFi firmware is installed (safely falls back if package name varies)
+apt-get install -y --no-install-recommends firmware-brcm80211 2>/dev/null || \
+apt-get install -y --no-install-recommends armbian-firmware 2>/dev/null || true
 
 echo "[*] Enabling NetworkManager service"
 systemctl enable NetworkManager 2>/dev/null || true

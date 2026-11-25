@@ -34,7 +34,7 @@ jobs:
   build:
     # aarch64 runner: native chroot, no qemu emulation needed
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -134,7 +134,7 @@ jobs:
           img="$(ls *s905d*.img | head -n 1)"
           rm -f *.img.gz
           xz -T0 -9 -k "${img}"
-          sha256sum "${img}.xz Pasted" 2>/dev/null || sha256sum "${img}.xz" > sha256sums.txt
+          sha256sum "${img}.xz" > sha256sums.txt
           ls -lh
 
       - name: Upload artifact
