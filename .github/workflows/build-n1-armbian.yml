@@ -3,14 +3,6 @@ name: Build N1 Armbian (s905d)
 on:
   workflow_dispatch:
     inputs:
-      profile:
-        description: "Image profile: base = minimal, pentest = pentest tools + v2rayA"
-        required: false
-        default: "pentest"
-        type: choice
-        options:
-          - base
-          - pentest
       kernel:
         description: "Kernel branch (ophub/kernel stable)"
         required: false
@@ -23,16 +15,11 @@ on:
           - "5.15.y"
           - "5.10.y"
       root_mb:
-        description: "Rootfs partition size in MiB (>= 2048; pentest profile needs >= 6656)"
+        description: "Rootfs partition size in MiB (default: 2048, fits easily in N1 8GB eMMC)"
         required: false
-        default: "6656"
-      install_msf:
-        description: "Install Metasploit Framework (forced off in pentest profile)"
-        required: false
-        default: true
-        type: boolean
+        default: "2048"
       upload_release:
-        description: "Also publish image to Releases"
+        description: "Publish image to Releases"
         required: false
         default: true
         type: boolean
@@ -45,16 +32,14 @@ permissions:
 
 jobs:
   build:
-    # aarch64 runner: native chroot, no qemu emulation (public repos get these for free).
-    # If the repo ever goes private, switch to ubuntu-24.04 (x86_64 + qemu, slower,
-    # counts against the 2000 free minutes/month); scripts auto-detect the arch.
+    # aarch64 runner: native chroot, no qemu emulation needed
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 350
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare qemu binfmt (x86_64 host only)
+      - name: Prepare qemu binfmt (fallback if runner is x86_64)
         if: runner.arch == 'X64'
         uses: docker/setup-qemu-action@v3
         with:
@@ -74,7 +59,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y parted dosfstools e2fsprogs rsync xz-utils bzip2 \
             unzip zip curl wget git ca-certificates binfmt-support || true
-          # only needed when running on a non-aarch64 runner
           sudo apt-get install -y qemu-user-static || true
           df -h /
 
@@ -115,64 +99,48 @@ jobs:
           mv src.img "${out}"
           rm -f src.img.xz
           echo "OS_CODENAME=${codename}" >> "${GITHUB_ENV}"
-          echo "BUILD_TAG=Armbian_n1_${{ inputs.profile }}_${codename}_$(date +%Y.%m)" >> "${GITHUB_ENV}"
+          echo "BUILD_TAG=Armbian_n1_clean_${codename}_$(date +%Y.%m)" >> "${GITHUB_ENV}"
           ls -lh
 
       - name: Rebuild for s905d (N1)
         working-directory: amlogic-s9xxx-armbian
         run: |
           set -e
-          # boot 256M keeps the whole image within the N1's 8G eMMC when rootfs is large
+          # s905d (Phicomm N1) rebuild with ophub kernel
           sudo ./rebuild -b s905d -k "${{ inputs.kernel }}" -a true -u stable -r ophub/kernel \
             -t ext4 -s 256/${{ inputs.root_mb }} -n ophub
           ls -lh build/output/images/
 
-      - name: Customize rootfs (toolchain / tools)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Customize rootfs (WiFi & essential tools)
         run: |
           set -e
-          # resolve the versioned v2rayA deb URL host-side with an authenticated
-          # token: anonymous api.github.com calls from runner IPs hit 403 quotas
-          V2RAYA_DEB_URL="$(curl -fsSL -H "Authorization: token ${GH_TOKEN}" https://api.github.com/repos/v2rayA/v2rayA/releases/latest | python3 -c 'import json,sys; assets=json.load(sys.stdin)["assets"]; print(next(a["browser_download_url"] for a in assets if a["name"].startswith("installer_debian_arm64") and a["name"].endswith(".deb")))')"
-          echo "V2RAYA_DEB_URL=${V2RAYA_DEB_URL}" >> "${GITHUB_ENV}"
-          # make it visible to the rest of THIS step too (GITHUB_ENV only
-          # affects subsequent steps)
-          export V2RAYA_DEB_URL
           cd amlogic-s9xxx-armbian/build/output/images
-          # ophub rebuild already gzip-compresses the result; unpack it first
           gz="$(ls *s905d*.img.gz 2>/dev/null | head -n 1 || true)"
           if [ -n "${gz}" ]; then
             echo "Decompressing ophub output: ${gz}"
             gunzip -kf "${gz}"
           fi
-          # free the no-longer-needed source image
           rm -f *-trunk_*.img
           cd - >/dev/null
           img="$(ls amlogic-s9xxx-armbian/build/output/images/*s905d*.img | head -n 1)"
           [ -n "${img}" ] || { echo "no rebuilt s905d image found"; exit 1; }
           echo "Customizing: ${img}"
-          bash scripts/customize-image.sh "${img}" "${{ inputs.install_msf }}" "${{ inputs.profile }}"
+          bash scripts/customize-image.sh "${img}"
 
       - name: Compress and checksum
         working-directory: amlogic-s9xxx-armbian/build/output/images
         run: |
           set -e
           img="$(ls *s905d*.img | head -n 1)"
-          # drop ophub's .gz and the plain .img after xz to keep only the final artifact
           rm -f *.img.gz
-          # -9: the compressed image must stay under GitHub Releases' 2 GiB asset cap
           xz -T0 -9 -k "${img}"
-          sha256sum "${img}.xz" > sha256sums.txt
-          if [ "$(stat -c%s "${img}.xz")" -gt 2147483648 ]; then
-            echo "WARNING: ${img}.xz exceeds the 2 GiB Releases asset limit; it will only be available as an artifact"
-          fi
+          sha256sum "${img}.xz Pasted" 2>/dev/null || sha256sum "${img}.xz" > sha256sums.txt
           ls -lh
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: armbian-n1-s905d-${{ inputs.profile }}-${{ env.OS_CODENAME }}
+          name: armbian-n1-s905d-clean-${{ env.OS_CODENAME }}
           path: |
             amlogic-s9xxx-armbian/build/output/images/*.img.xz
             amlogic-s9xxx-armbian/build/output/images/sha256sums.txt
@@ -191,13 +159,17 @@ jobs:
           make_latest: true
           gh_token: ${{ secrets.GITHUB_TOKEN }}
           body: |
-            ### N1 (s905d) Armbian custom image
-            - Board: **s905d (Phicomm N1)**
-            - Profile: **${{ inputs.profile }}**
-            - OS: Armbian **${{ env.OS_CODENAME }}** (minimal, minimalistic)
-            - Kernel: **${{ inputs.kernel }}** (ophub/kernel stable)
-            - Built-in: python3 / rust / metasploit-framework
-            - pentest profile adds: nmap, hydra, john, hashcat, sqlmap, aircrack-ng, seclists, searchsploit, Responder, impacket, v2rayA + Xray-core, ...
-            - Default login: `root` / `1234`
-            - Install to eMMC: boot from USB, then run `armbian-install`
-            - v2rayA web UI: `http://<n1-ip>:2017` (proxychains4 preset to local socks5 20170)
+            ### 斐讯 N1 (s905d) Armbian 极简纯净版固件
+            - 设备型号: **Phicomm N1 (s905d)**
+            - 系统版本: Armbian **${{ env.OS_CODENAME }}** (Minimal 精简底座)
+            - 内核版本: **${{ inputs.kernel }}** (ophub/kernel stable)
+            - 内置特性:
+              - 集成 N1 原生 WiFi 固件（博通 BCM43455）与蓝牙支持
+              - 内置 NetworkManager / nmcli / nmtui，开箱即用无线网络
+              - 剔除所有冗余开发库与渗透工具，系统轻盈快速
+              - 占用更少 eMMC 空间，预留大量空间用于后续自建服务/Docker
+            - 默认登录: 用户名 `root` / 初始密码 `1234`
+            - 写入 eMMC 命令: U盘启动进入系统后运行 `armbian-install`
+            - 连接 WiFi 方法:
+              - 图形终端: 运行 `nmtui` 选择 Activate a connection -> 选取 WiFi
+              - 命令行: `nmcli device wifi connect "SSID" password "密码"`

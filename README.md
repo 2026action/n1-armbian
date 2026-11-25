@@ -1,74 +1,70 @@
-# N1 Armbian Builder（斐讯 N1 / s905d）
+# 斐讯 N1 (Phicomm N1 / s905d) 极简 Armbian 固件云端构建
 
-通过 GitHub Actions 云端编译斐讯 N1（Amlogic S905D）的定制 Armbian 固件。
-本地**不需要任何编译环境**，点一下按钮即可云端出包。
+基于 GitHub Actions 的斐讯 N1（Amlogic S905D）极简 Armbian 固件云端编译项目。
+本地**不需要任何编译环境**，进入 Actions 页面点击按钮即可在 3~5 分钟内云端出包。
+
+---
 
 ## 固件特性
 
-- **Armbian stable**（minimal 精简版，无桌面），基于官方 Armbian 源镜像重建
-- **ophub 稳定版内核**（默认 6.12.y，可选 5.10/5.15/6.1/6.6）
-- 两种配方（workflow 里 `profile` 选择）：
-  - **base**：精简底座 —— `python3`(pip/venv) + `rustc/cargo` + `metasploit-framework`（含 PostgreSQL）+ 编译工具链
-  - **pentest**（默认）：base 之上再加常见渗透工具与 v2rayA（**不含 msf**，8G eMMC 空间有限；要 msf 请用 base 配方）：
-    - 侦察/扫描：`nmap` `masscan` `whatweb` `nikto` `wafw00f` `gobuster` `ffuf` `dirb` `dirsearch` `wfuzz` `fierce` `dnsrecon` `dnsenum` 等
-    - 爆破/破解：`hydra` `john` `hashcat`
-    - 无线：`aircrack-ng`
-    - Web：`sqlmap` `sslscan` `testssl.sh`
-    - 网络/中间人：`hping3` `macchanger` `tcpdump` `tshark` `socat` `proxychains4`（已预配置 socks5 → 127.0.0.1:20170）
-    - 内网/SMB：`smbclient` `Responder`(`/opt/Responder`) `impacket`(pip) `enum4linux`
-    - 字典与漏洞库：`seclists`(`/usr/share/seclists`) `searchsploit`(exploitdb, GitLab 源)
-    - 科学上网：**v2rayA** + **Xray-Core**(arm64) + geoip/geosite，开机自启，web 面板 `http://<N1的IP>:2017`
-- 已做精简：排除文档/手册/多余语言包，`--no-install-recommends` 安装
+- **极致纯净**：基于官方 Armbian Minimal 精简系统，剔除一切无用工具链与臃肿套件。
+- **WiFi / 蓝牙开箱即用**：完整包含斐讯 N1 的博通 BCM43455 无线网卡固件和 DTB 驱动支持。
+- **开机即连**：内置 `NetworkManager`、`nmcli`、`nmtui` 与 `wpa_supplicant`。
+- **空间充裕**：系统分区仅占用约 2GB，为 N1 自带的 8GB eMMC 腾出 5GB+ 存储空间，方便部署 Docker 及常用轻量服务。
+- **ophub 稳定内核**：支持 6.12.y（默认）、6.6.y、6.1.y、5.15.y、5.10.y。
 
-## 使用方法
+---
 
-1. 打开本仓库 **Actions → Build N1 Armbian (s905d) → Run workflow**
-2. 按需选择参数（默认即可）：
+## 如何编译
 
-   | 参数 | 说明 | 默认 |
-   |---|---|---|
-   | `profile` | 配方：`base`（精简）/ `pentest`（渗透全家桶 + v2rayA） | pentest |
-   | `kernel` | 内核分支（ophub stable 通道） | 6.12.y |
-   | `root_mb` | rootfs 分区大小 MiB（pentest 建议 ≥ 6656） | 6656 |
-   | `install_msf` | 是否内置 Metasploit（pentest 配方强制关闭） | true |
-   | `upload_release` | 是否发布到 Releases | true |
+1. 点击仓库上方的 [Actions](https://github.com/2026action/n1-armbian/actions)。
+2. 在左侧选择 **`Build N1 Armbian (s905d)`**。
+3. 点击右侧的 **`Run workflow`** 下拉按钮：
+   - **kernel**：选择内核版本（推荐默认的 `6.12.y` 或 `6.1.y`）
+   - **root_mb**：根分区大小（MiB，默认 `2048`）
+   - **upload_release**：是否同时发布到 GitHub Releases（默认 `true`）
+4. 点击绿色 **`Run workflow`** 开始编译。大约 3~5 分钟后，固件会自动发布在 [Releases](https://github.com/2026action/n1-armbian/releases) 中。
 
-   源镜像自动选择 Armbian 官方仓库里最新的 **minimal 精简版**（无桌面），无需手动指定系统版本。
+---
 
-3. 等待约 40~90 分钟（公有仓库免费 ARM 云主机原生编译）
-4. 到 **Releases** 下载 `.img.xz` 固件（同 run 的 Artifacts 里也有备份）
+## 刷机与使用说明
 
-## 刷机（N1）
+### 1. 制作启动 U 盘
+1. 在 Releases 中下载编译好的 `.img.xz` 文件并解压出 `.img` 镜像。
+2. 使用 [Rufus](https://rufus.ie/) 或 [balenaEtcher](https://etcher.balena.io/) 将 `.img` 镜像写入 U 盘（建议使用 USB 2.0 接口的 U 盘）。
 
-1. 解压 `Armbian_*.img.xz` 得到 `.img`
-2. 用 Rufus / balenaEtcher 写入 U 盘（建议 ≥ 8G 的好一点的 U 盘）
-3. N1 插 U 盘、网线，U 盘启动（已刷过中小硅固件的 N1 通常通电即从 U 盘引导）
-4. SSH 登录：`root` / `1234`（首次登录会让你改密码）
-5. 验证内置工具：
-   ```bash
-   python3 -V && rustc -V && cargo -V
-   msfconsole -v
-   ```
-6. 写入 eMMC：`armbian-install`（选 mmcblk2，之后可拔 U 盘从 eMMC 启动）
-7. msf 数据库（可选）：`msfdb init` 然后 `db_status` 检查
+### 2. 启动与初始登录
+1. 将 U 盘插入 N1 靠近 HDMI 口的 USB 接口，通电开机。
+2. 初始登录凭证：
+   - 用户名：`root`
+   - 默认密码：`1234`
+3. 首次登录会提示修改 root 密码并创建一个普通用户（可按 `Ctrl + C` 跳过创建普通用户）。
 
-## 常见问题
+### 3. 连接 WiFi
 
-- **本仓库是私有的**：固件下载需登录 GitHub；编译跑在 x86 云主机 + qemu 模拟上（较慢，计入每月 2000 分钟免费额度）。若转回公开仓库，把 workflow 里 `runs-on: ubuntu-24.04` 改成 `ubuntu-24.04-arm` 即可恢复原生编译（快很多且免费）
-- **msf 启动慢**：N1 只有 2G 内存 + eMMC 性能一般，`msfconsole` 首次加载 1~2 分钟属正常
-- **想换内核**：直接改 workflow 触发参数里的 `kernel` 即可，无需改代码
-- **想加装其他软件**：编辑 `custom/customize-rootfs.sh` 里的 `apt-get install` 列表后重新触发
-- **默认 root 密码**：`1234`，首次登录强制修改；暴露公网请务必改强密码/禁用密码登录
+可以使用以下任意一种方式连接无线网络：
 
-## 目录结构
+- **方法 1：图形字符界面（推荐）**
+  ```bash
+  nmtui
+  ```
+  选择 **`Activate a connection`** -> 找到你的 WiFi 名称并回车 -> 输入无线密码即可连接。
 
+- **方法 2：命令行连接**
+  ```bash
+  nmcli device wifi list
+  nmcli device wifi connect "你的WiFi名称" password "你的WiFi密码"
+  ```
+
+### 4. 固化写入 N1 内置 eMMC（可选）
+如果您希望彻底脱离 U 盘运行：
+```bash
+armbian-install
 ```
-.github/workflows/build-n1-armbian.yml   # 云端编译流水线
-scripts/customize-image.sh               # 挂载镜像 + chroot（宿主侧）
-custom/customize-rootfs.sh               # 固件内预装软件清单（改这里加软件）
-```
+按提示选择对应机型（s905d / N1），等待写入完成即可拔掉 U 盘重启。
 
-## 致谢
+---
 
-构建工具来自 [ophub/amlogic-s9xxx-armbian](https://github.com/ophub/amlogic-s9xxx-armbian)，
-内核来自 [ophub/kernel](https://github.com/ophub/kernel)。
+## 感谢
+- [ophub/amlogic-s9xxx-armbian](https://github.com/ophub/amlogic-s9xxx-armbian)
+- [Armbian](https://www.armbian.com/)

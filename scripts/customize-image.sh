@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 # Host-side helper: mount an Armbian image, chroot into its rootfs and run the
 # customization script. Works natively on aarch64 runners; on x86_64 runners it
-# transparently uses qemu-aarch64-static (binfmt must be registered).
+# transparently uses qemu-aarch64-static.
 #
-# Usage: bash scripts/customize-image.sh <image.img> <install_msf:true|false> <profile:base|pentest>
+# Usage: bash scripts/customize-image.sh <image.img>
 set -euo pipefail
 
-IMG="${1:?usage: customize-image.sh <image.img> <install_msf> <profile>}"
-INSTALL_MSF="${2:-true}"
-PROFILE="${3:-base}"
+IMG="${1:?usage: customize-image.sh <image.img>}"
 MNT=/mnt/n1root
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -37,10 +35,6 @@ sudo mkdir -p "${MNT}"
 sudo mount "${loop}p2" "${MNT}"
 
 # --- resolver fix for chroot ---
-# The image's /etc/resolv.conf may be a dangling symlink or a stale mount point,
-# and its nsswitch.conf may reference systemd nss modules that are unusable in a
-# plain chroot (observed: getaddrinfo EBUSY). Use the host's working resolver
-# for the duration of the chroot, then restore the originals.
 resolv_kind="none"
 if sudo test -L "${MNT}/etc/resolv.conf"; then
   resolv_kind="symlink"
@@ -67,7 +61,7 @@ else
 fi
 
 sudo cp "${REPO_ROOT}/custom/customize-rootfs.sh" "${MNT}/tmp/customize-rootfs.sh"
-"${CHROOT_CMD[@]}" /tmp/customize-rootfs.sh "${INSTALL_MSF}" "${PROFILE}" "${XRAY_ZIP_URL:-}" "${V2RAYA_DEB_URL:-}"
+"${CHROOT_CMD[@]}" /tmp/customize-rootfs.sh
 
 # --- restore original resolver config ---
 if [[ "${host_arch}" != "aarch64" ]]; then
@@ -84,4 +78,4 @@ fi
 
 sudo rm -f "${MNT}/tmp/customize-rootfs.sh"
 
-echo "[+] image customized: ${IMG}"
+echo "[+] Image customized successfully: ${IMG}"
